@@ -1,52 +1,53 @@
 from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, ContextTypes, filters
+import psutil
+import time
 
 # Функция обработки команды /start
-async def start(update: Update, context: CallbackContext) -> None:
-    await update.message.reply_text('Привет! Я твой бот.')
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.message:
+        await update.message.reply_text('Привет!')
 
 # Функция для получения показателей нагрузки с сетевым трафиком в процентах
-async def system_stats(update: Update, context: CallbackContext) -> None:
-    # Получение статистики
-    cpu_usage = psutil.cpu_percent(interval=1)  # Загруженность CPU за 1 секунду
-    memory = psutil.virtual_memory()  # Информация о памяти
-    memory_usage = memory.percent  # Процент использования памяти
-    net_io = psutil.net_io_counters()  # Сетевой трафик
-    net_sent = net_io.bytes_sent  # Отправлено байт
-    net_recv = net_io.bytes_recv  # Получено байт
+async def system_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.message:
+        net_io_start = psutil.net_io_counters()
+        time.sleep(1)  # Ждём 1 секунду для получения скорости сети
+        net_io_end = psutil.net_io_counters()
 
-    # Максимальная скорость сети в битах в секунду
-    max_speed_bits_per_sec = 200 * 10**6  # 200 Мбит/с = 200 * 10^6 бит/с
+        bytes_sent = net_io_end.bytes_sent - net_io_start.bytes_sent
+        bytes_recv = net_io_end.bytes_recv - net_io_start.bytes_recv
 
-    # Переводим отправленный и полученный трафик в биты и вычисляем процент от максимальной скорости
-    net_sent_bits_per_sec = (net_sent * 8)  # байты в биты
-    net_recv_bits_per_sec = (net_recv * 8)  # байты в биты
+        sent_bits_per_sec = bytes_sent * 8
+        recv_bits_per_sec = bytes_recv * 8
 
-    net_sent_percent = (net_sent_bits_per_sec / max_speed_bits_per_sec) * 100
-    net_recv_percent = (net_recv_bits_per_sec / max_speed_bits_per_sec) * 100
+        max_speed_bits_per_sec = 200 * 10**6  # 200 Мбит/с
 
-    # Формирование ответа
-    response = (
-        f"Нагрузка на CPU: {cpu_usage}%\n"
-        f"Использование памяти: {memory_usage}%\n"
-        f"Сетевой трафик:\n"
-        f"  Отправлено: {net_sent_percent:.2f}% от максимума (200 Мбит/с)\n"
-        f"  Получено: {net_recv_percent:.2f}% от максимума (200 Мбит/с)"
-    )
+        net_sent_percent = (sent_bits_per_sec / max_speed_bits_per_sec) * 100
+        net_recv_percent = (recv_bits_per_sec / max_speed_bits_per_sec) * 100
 
-    # Отправка сообщения
-    await update.message.reply_text(response)
+        cpu_usage = psutil.cpu_percent(interval=1)
+        memory_usage = psutil.virtual_memory().percent
+
+        response = (
+            f"Сервер: 89.150.59.40 (Netherlands 🇳🇱)\n"
+            f"CPU: {cpu_usage}%\n"
+            f"Память: {memory_usage}%\n"
+            f"Нагрузка на сеть:\n"
+            f"  Отправка: {net_sent_percent:.2f}%\n"
+            f"  Получение: {net_recv_percent:.2f}%"
+        )
+
+        await update.message.reply_text(response)
 
 # Основная функция, которая запускает бота
 def main():
-    # Заменить YOUR_TOKEN на твой токен
     application = Application.builder().token("").build()
 
-    # Регистрируем обработчики
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("stats", system_stats))
+    # Регистрируем обработчики с фильтром для работы в группах
+    application.add_handler(CommandHandler("start", start, filters=filters.COMMAND))
+    application.add_handler(CommandHandler("stats", system_stats, filters=filters.COMMAND))
 
-    # Запускаем бота
     application.run_polling()
 
 if __name__ == '__main__':
